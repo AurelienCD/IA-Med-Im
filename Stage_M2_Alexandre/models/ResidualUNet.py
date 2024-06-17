@@ -9,7 +9,7 @@ from layers.ResidualBlocks import ResidualBottleneckBlock, ResidualBlock
 from models.BaseModel import BaseModel
 
 
-class UNet(BaseModel):
+class ResidualUNet(BaseModel):
 
     def __init__(self, in_channels: int, depth: int, num_classes: int, task_name: str, dataset_name: str) -> None:
         super().__init__(task_name=task_name, dataset_name=dataset_name)
