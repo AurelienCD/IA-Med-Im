@@ -1,0 +1,51 @@
+model:
+  base_learning_rate: 4.5e-6
+  target: models.autoencoder.VQModel
+  params:
+    embed_dim: 8
+    n_embed: 16384
+    ddconfig:
+      double_z: false
+      z_channels: 8
+      resolution: 256
+      in_channels: 1
+      out_ch: 1
+      ch: 128
+      ch_mult:
+        - 1
+        - 1
+        - 2
+        - 2
+        - 4
+      num_res_blocks: 2
+      attn_resolutions:
+        - 16
+      dropout: 0.0
+    lossconfig:
+      target: utils.losses.vqperceptual.VQLPIPSWithDiscriminator
+      params:
+        disc_conditional: false
+        disc_in_channels: 1
+        disc_start: 250001
+        disc_weight: 0.75
+        disc_num_layers: 2
+        codebook_weight: 1.0
+
+data:
+  target: data.MRIDataModule.MRIDataModule
+  params:
+    dataset_path: '../DB_IA-Gen-Med-Im'
+    manifest_filename: 'MRI_dataset_autoencoder.csv'
+    task: 'autoencoder'
+    num_workers: 4
+    batch_size: 6
+    crop_size: 256
+    train_val_test_split: [0.1, 0.05, 0.85]
+
+lightning:
+  trainer:
+    benchmark: True
+    accelerator: auto  # cpu, gpu, tpu, hpu or auto
+    devices: auto
+    strategy: auto
+    #accumulate_grad_batches: 2

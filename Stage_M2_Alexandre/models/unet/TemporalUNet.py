@@ -14,7 +14,8 @@ from layers.ResidualBlocks import optimal_residual_block
 
 class TemporalUNet(nn.Module):
 
-    def __init__(self, in_channels, out_channels, channel_scale=32, channels_mult=(1, 2, 4, 8, 16), condition: bool = False):
+    def __init__(self, in_channels, out_channels, channel_scale=32, channels_mult=(1, 2, 4, 8, 16),
+                 condition: bool = False):
         super(TemporalUNet, self).__init__()
 
         self.condition = condition
@@ -41,7 +42,8 @@ class TemporalUNet(nn.Module):
         self.up_blocks = nn.ModuleList([])
 
         for i, (in_dim, out_dim) in enumerate(in_out_channels):
-            self.down_blocks.append(self.__contraction_block(in_channels=in_dim, out_channels=out_dim, time_embedding_dim=time_embedding_dim))
+            self.down_blocks.append(self.__contraction_block(in_channels=in_dim, out_channels=out_dim,
+                                                             time_embedding_dim=time_embedding_dim))
 
         self.middle_block = nn.ModuleList([
             optimal_residual_block(channels[-1], channels[-1], time_embedding_dim),
@@ -51,10 +53,12 @@ class TemporalUNet(nn.Module):
         ])
 
         for i, (out_dim, in_dim) in enumerate(reversed(in_out_channels)):
-            self.up_blocks.append(self.__expansion_block(in_channels=in_dim * 2, out_channels=out_dim, time_embedding_dim=time_embedding_dim))
+            self.up_blocks.append(
+                self.__expansion_block(in_channels=in_dim, out_channels=out_dim, time_embedding_dim=time_embedding_dim))
 
         self.final_block = nn.ModuleList([
-            optimal_residual_block(in_channels=channels[0] * 2, out_channels=channels[0], time_embedding_dim=time_embedding_dim),
+            optimal_residual_block(in_channels=channels[0] * 2, out_channels=channels[0],
+                                   time_embedding_dim=time_embedding_dim),
             nn.Conv2d(in_channels=channels[0], out_channels=out_channels, kernel_size=1),
         ])
 
@@ -91,37 +95,45 @@ class TemporalUNet(nn.Module):
         x = res_block2(x, t)
 
         for res_block1, res_block2, attention_block, up in self.up_blocks:
-            x = torch.cat((x, skip_connection.pop()), dim=1)
+            skip_connection_features_map = skip_connection.pop()
+
+            x = torch.cat((x, skip_connection_features_map), dim=1)
             x = res_block1(x, t)
+
+            x = torch.cat((x, skip_connection_features_map), dim=1)
             x = res_block2(x, t)
+
             x = attention_block(x)
             x = up(x)
 
         x = torch.cat((x, skip_connection.pop()), dim=1)
-        res_block, final_conv,  = self.final_block
+        res_block, final_conv, = self.final_block
         x = res_block(x, t)
         x = final_conv(x)
 
         return x
 
-
     @staticmethod
     def __contraction_block(in_channels, out_channels, time_embedding_dim):
         block = nn.Sequential(
-            optimal_residual_block(in_channels=in_channels, out_channels=out_channels, time_embedding_dim=time_embedding_dim),
-            optimal_residual_block(in_channels=out_channels, out_channels=out_channels, time_embedding_dim=time_embedding_dim),
+            optimal_residual_block(in_channels=in_channels, out_channels=in_channels,
+                                   time_embedding_dim=time_embedding_dim),
+            optimal_residual_block(in_channels=in_channels, out_channels=out_channels,
+                                   time_embedding_dim=time_embedding_dim),
             Residual(PreNorm('BN', out_channels, LinearAttention(dim=out_channels))),
-            nn.MaxPool2d(kernel_size=2)
+            nn.MaxPool2d(kernel_size=2),
         )
         return block
 
     @staticmethod
     def __expansion_block(in_channels, out_channels, time_embedding_dim):
         block = nn.Sequential(
-            optimal_residual_block(in_channels=in_channels, out_channels=out_channels, time_embedding_dim=time_embedding_dim),
-            optimal_residual_block(in_channels=out_channels, out_channels=out_channels, time_embedding_dim=time_embedding_dim),
-            Residual(PreNorm('BN', out_channels, LinearAttention(dim=out_channels))),
-            nn.ConvTranspose2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, stride=2,
+            optimal_residual_block(in_channels=2 * in_channels, out_channels=in_channels,
+                                   time_embedding_dim=time_embedding_dim),
+            optimal_residual_block(in_channels=2 * in_channels, out_channels=in_channels,
+                                   time_embedding_dim=time_embedding_dim),
+            Residual(PreNorm('BN', in_channels, LinearAttention(dim=in_channels))),
+            nn.ConvTranspose2d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=2,
                                padding=1, output_padding=1)
         )
         return block

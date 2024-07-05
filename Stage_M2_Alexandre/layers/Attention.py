@@ -46,9 +46,10 @@ class Attention(nn.Module):
             lambda t: rearrange(t, 'b (head d) h w -> b head d (h w)', head=self.heads), qkv
         )
 
+        q = self.scale * q
+
         # dot product (Q K^T)
         similarities: torch.Tensor = einsum(q, k, "b head d i, b head d j -> b head i j")
-        similarities *= self.scale
         # we subtract the max value to ensure stable computation of the softmax
         # (the exponential grows too fast and can quickly reach uncomputable value)
         similarities = similarities - similarities.amax(dim=-1, keepdim=True).detach()
@@ -92,13 +93,14 @@ class LinearAttention(nn.Module):
             lambda t: rearrange(t, 'b (head d) h w -> b head d (h w)', head=self.heads), qkv
         )
 
-        q = torch.softmax(q, dim=-1)
-        k = torch.softmax(q, dim=-2)
+        q = torch.softmax(q, dim=-2)
+        k = torch.softmax(q, dim=-1)
+        q = self.scale * q
 
         global_context: torch.Tensor = einsum(k, v, "b head k n, b head v n -> b head k v")
 
         # reminder: dim_q = dim_k
         output: torch.Tensor = einsum(global_context, q, 'b head k v, b head k n -> b head v n')
-        output = rearrange(output, 'b head c (x y) -> b (head c) x y', x=h, y=w)
+        output = rearrange(output, 'b head c (x y) -> b (head c) x y', head=self.heads, x=h, y=w)
 
         return self.to_out(output)

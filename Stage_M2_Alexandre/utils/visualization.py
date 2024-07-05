@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import torch
-from models.DDPM import DDPM
+import matplotlib.animation as animation
+from models.diffusion.DDPM import DDPM
 
 
 def plot_graph(x, y, xlabel='', ylabel='', title='') -> None:
@@ -20,7 +21,8 @@ def plot_reverse_diffusion(sec_image: torch.Tensor, sequence_t: list, diffusion_
     for col_idx, t_val in enumerate(sequence_t):
         axs[0, col_idx].axis('off')
         axs[0, col_idx].set_title(f't: {diffusion_step-t_val}')
-        axs[0, col_idx].imshow(sec_image[t_val][0].cpu().reshape(h, w, c), cmap='gray')
+        axs[0, col_idx].imshow(sec_image[t_val][0].reshape(h, w, c), cmap='gray')
+    plt.show()
 
 
 def plot_forward_diffusion(diffusion_model: DDPM, x_start: torch.Tensor, sequence_t: list) -> torch.Tensor:
@@ -43,4 +45,26 @@ def plot_forward_diffusion(diffusion_model: DDPM, x_start: torch.Tensor, sequenc
         axs[0, col_idx].axis('off')
         axs[0, col_idx].set_title(f't: {t_val}')
         axs[0, col_idx].imshow(x_noisy[0].cpu().reshape(h, w, c), cmap='gray')
+    plt.show()
     return x_noisy
+
+
+def animation_export(reverse_sample: list, batch_index: int, filename: str, fps=60):
+    """
+    source: matplotlib.org/stable/gallery/animation/dynamic_image.html
+    """
+    batch_size, channels, height, width = reverse_sample[0].shape
+    fig, ax = plt.subplots()
+    ims = []
+    for i, batch_img in enumerate(reverse_sample):
+        img = batch_img[batch_index].reshape(height, width, channels).cpu().numpy()
+        im = ax.imshow(img, animated=True, cmap='gray')
+        if i == 0:
+            im = ax.imshow(img, cmap='gray')
+        ims.append([im])
+    interval = 1 / fps * 1000
+    ani = animation.ArtistAnimation(fig, ims, interval=interval, blit=True)
+    writer = animation.FFMpegWriter(
+        fps=60, metadata=dict(artist='Alexandre LECLERCQ', bitrate=6000)
+    )
+    ani.save(f'{filename}.mp4', writer=writer)

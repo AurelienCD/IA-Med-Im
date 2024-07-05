@@ -20,14 +20,11 @@ class BaseTrainer:
                  batch_size=1,
                  save_best=False
                  ) -> None:
-
-
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
 
         print(f'device: {self.device}')
 
         self.model = model
-        self.model = self.model.to(self.device)
         self.train_dataset = train_dataset
         self.test_dataset = test_dataset
         self.train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)

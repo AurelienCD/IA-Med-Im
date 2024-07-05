@@ -6,61 +6,66 @@ Licence: MIT
 import torch
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
+import timeit
 import warnings
 from torcheval.metrics import PeakSignalNoiseRatio
-from utils.RandomNoise import AddGaussianNoise
 from utils.trainer.BaseTrainer import BaseTrainer
 
 
-class DenoysingTrainer(BaseTrainer):
-    
-    def __init__(self, 
-                 model: torch.nn.Module,
+class DiffusionModelTrainer:
+
+    def __init__(self,
+                 model,
                  train_dataset: Dataset,
                  test_dataset: Dataset,
-                 noise: AddGaussianNoise,
                  loss_fn,
                  optimizer: torch.optim,
                  batch_size=1,
                  save_best=False
                  ) -> None:
-        super().__init__(model, train_dataset, test_dataset, loss_fn, optimizer, batch_size, save_best)
-        self.noise = noise
+        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
+        self.model = model
+        self.train_dataset = train_dataset
+        self.test_dataset = test_dataset
+        self.train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        self.test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
+        self.loss_fn = loss_fn
+        self.optimizer = optimizer
+        self.batch_size = batch_size
+        self.save_best = save_best
+        self.metric_values = dict()
 
     def train(self, num_epochs: int):
 
         self.metric_values['training_loss'] = []
-        self.metric_values['training_psnr'] = []
 
-        
         for epoch in range(num_epochs):
-            training_batches_progress = tqdm(range(len(self.train_loader)), desc='Epoch {}/{}'.format(epoch + 1, num_epochs))
+            training_batches_progress = tqdm(range(len(self.train_loader)),
+                                             desc='Epoch {}/{}'.format(epoch + 1, num_epochs))
             self.metric_values['training_loss'].append(0.0)
-            psnr_metric = PeakSignalNoiseRatio()
-            
-            for images, _ in self.train_loader:
 
-                images = images.to(self.device).to(torch.float32)
-                noisy_images = self.noise(images)
+            for images in self.train_loader:
+                images, _ = images
+                images = images.to(self.device)
+
                 self.optimizer.zero_grad()
-
-                outputs = self.model(noisy_images)
-                
-                loss = self.loss_fn(outputs, images)  # comparison between denoised images and real images
-                psnr_metric.update(outputs, images)
+                loss = self.model.compute_loss(images)
                 loss.backward()
                 self.optimizer.step()
-                
+
                 self.metric_values['training_loss'][-1] += len(images) * loss.item()
                 training_batches_progress.update()
-            self.metric_values['training_loss'][-1] /= len(self.train_loader)
-            self.metric_values['training_psnr'].append(psnr_metric.compute())
-            training_batches_progress.set_postfix_str(str(f'Loss: {self.metric_values["training_loss"][-1]:.4f}, PSNR: {self.metric_values["training_psnr"][-1]:.4f}'))
+
+            self.metric_values['training_loss'][-1] /= len(self.train_dataset)
+
+            training_batches_progress.set_postfix_str(str(f'Loss: {self.metric_values["training_loss"][-1]:.4f}'))
             training_batches_progress.close()
 
-            if self.save_best and self.metric_values['training_psnr'][-1] >= max(self.metric_values['training_psnr']):
+            if self.save_best and self.metric_values['training_loss'][-1] >= max(self.metric_values['training_loss']):
                 print('Saving best model')
                 self.model.save()
+
+        return self.metric_values
 
     def evaluate(self):
         loss = 0.0
