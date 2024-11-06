@@ -88,8 +88,8 @@ def main():
             num_workers=None)
 
         trainer.fit(model, data)
-        val_loss = trainer.callback_metrics['val/loss'].item()
-        return val_loss
+        val_acc = trainer.callback_metrics['val/acc'].item()
+        return val_acc
 
     study = optuna.create_study(direction="minimize")
     study.optimize(objective, n_trials=n_trials)
