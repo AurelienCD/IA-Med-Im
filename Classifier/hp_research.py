@@ -91,7 +91,7 @@ def main():
         val_acc = trainer.callback_metrics['val/acc'].item()
         return val_acc
 
-    study = optuna.create_study(direction="minimize")
+    study = optuna.create_study(direction="maximize")
     study.optimize(objective, n_trials=n_trials)
 
     print("Best hyperparameters:", study.best_params)
