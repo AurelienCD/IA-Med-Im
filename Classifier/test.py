@@ -18,47 +18,22 @@ def main():
 
     postfixname = 'classifier'
 
-    #logdir = './logs/2024-11-06_091858_classifier'  # valeur par défaut None
-    logdir = None
+    logdir = './logs/2024-11-07_165557_classifier'  # valeur par défaut None
+    #logdir = None
 
-    if logdir is None:  # will be used when there will be an arguments system
-        logdir = f'./logs/{now}_{postfixname}'
-        lr = 1.6319144779067916e-05
-        weight_decay = 0.00040378497054698297
-    else:
-        best_hp = pd.read_csv(os.path.join(logdir, 'best_hp.csv'))
-        lr = best_hp['lr'][0]
-        weight_decay = best_hp['weight_decay'][0]
-
-    n_epoch = 300
+    lr = 1.6319144779067916e-05
+    weight_decay = 0.00040378497054698297
 
     batch_size = 30
 
-    patience = 50
+    ckptdir = os.path.join(logdir, 'checkpoints')
 
     model = MyModel(lr=lr, weight_decay=weight_decay)
-
-    checkpoint_callback = ModelCheckpoint(
-        monitor="val/acc",
-        dirpath=os.path.join(logdir, 'checkpoints'),
-        filename="best_model",
-        save_top_k=3,
-        mode="min",
-    )
-
-    early_stopping_callback = EarlyStopping(
-        monitor="val/acc",
-        mode="max",
-        patience=patience,
-        verbose=True
-    )
 
     tensorboard_callback = TensorBoardLogger(name="tensorboard", save_dir=logdir)
 
     trainer = L.Trainer(
-        callbacks=[checkpoint_callback, early_stopping_callback],
-        logger=tensorboard_callback,
-        max_epochs=n_epoch,
+        max_epochs=100,
         accelerator='gpu',
         devices='1',
         log_every_n_steps=5  # Par defaut log_every_n_steps = 50
@@ -82,7 +57,10 @@ def main():
         normalization='max',
         num_workers=None)
 
-    trainer.fit(model, data)
+    evaluation = {}
+    for ckpt in os.listdir(ckptdir):
+        evaluation[ckpt] = trainer.test(model, data, ckpt_path=os.path.join(ckptdir, ckpt))[0]
+    pd.DataFrame(evaluation).transpose().to_csv(os.path.join(logdir, 'evaluation.csv'))
 
 
 if __name__ == '__main__':

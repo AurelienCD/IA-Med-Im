@@ -21,7 +21,7 @@ def main():
 
     n_epoch = 300
 
-    n_trials = 50
+    n_trials = 10
 
     batch_size = 30
 
@@ -88,8 +88,11 @@ def main():
             num_workers=None)
 
         trainer.fit(model, data)
-        val_acc = trainer.callback_metrics['val/acc'].item()
-        return val_acc
+        #val_acc = trainer.callback_metrics['val/acc'].item()
+        #return val_acc
+
+        best_val_acc= max([checkpoint_callback.best_model_score, trainer.callback_metrics['val/acc'].item()])
+        return best_val_acc
 
     study = optuna.create_study(direction="maximize")
     study.optimize(objective, n_trials=n_trials)
