@@ -1,77 +1,80 @@
 import lightning as L
+import sys
+import os
 import optuna
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
-from lightning.pytorch.loggers import TensorBoardLogger
-from data.MRIDataModule_Alexandre import MRIDataModule
+from data.MRIDataModule_MAJ09122024 import MRIDataModule
 from classifieur.mymodel import MyModel
 import datetime
-import os
 import pandas as pd
 
 def main():
-
-    # TODO : système arguments
-    # TODO : chargement automatique de configuration de modèle via fichier yaml
 
     now = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
 
     postfixname = 'classifier'
 
-    logdir = f'./logs/{now}_{postfixname}'
+    logdir = f'././logs/{now}_{postfixname}'
+    os.makedirs(logdir, exist_ok=True)
+
+    db_name = f'ds_{now}.sqlite3'
+    db_path = f'sqlite:///{db_name}'
 
     n_epoch = 300
-
     n_trials = 50
-
     batch_size = 30
 
-    min_lr = 1e-5
+    min_lr = 1e-7
     max_lr = 1e-2
 
     min_weight_decay = 1e-6
     max_weight_decay = 1e-2
 
+    min_dropout = 0.1
+    max_dropout = 0.5
+
     patience = 50
 
     def objective(trial):
+        # Suggest hyperparameters
         lr = trial.suggest_float('lr', min_lr, max_lr, log=True)
         weight_decay = trial.suggest_float('weight_decay', min_weight_decay, max_weight_decay, log=True)
+        dropout_rate = trial.suggest_float('dropout_rate', min_dropout, max_dropout, log=True)
 
         print(f'\ntrial : {trial}')
         print(f'lr : {lr}')
-        print(f'weight_decay : {weight_decay}\n')
+        print(f'weight_decay : {weight_decay})')
+        print(f'dropout_rate : {dropout_rate})\n')
 
-        model = MyModel(lr=lr, weight_decay=weight_decay)
+        model = MyModel(lr=lr, weight_decay=weight_decay, dropout_rate=dropout_rate)
 
         checkpoint_callback = ModelCheckpoint(
-            monitor="val/acc",
+            monitor="val/acc_macro",
             dirpath=os.path.join(logdir, 'checkpoints'),
-            filename="best_model",
+            filename=f"best_model_trial",
             save_top_k=3,
-            mode="min",
+            mode="max",
         )
 
         early_stopping_callback = EarlyStopping(
-            monitor="val/acc",
+            monitor="val/acc_macro",
             mode="max",
             patience=patience,
             verbose=True
         )
 
-        #tensorboard_callback = TensorBoardLogger(name="tensorboard", save_dir=logdir)
-
         trainer = L.Trainer(
             callbacks=[checkpoint_callback, early_stopping_callback],
-            #logger=tensorboard_callback,
             max_epochs=n_epoch,
             accelerator='gpu',
             devices='1',
-            log_every_n_steps=5   #Par defaut log_every_n_steps = 50
+            log_every_n_steps=5
         )
 
         db_path = '../data'
         task = 'classification'
-        manifest = f'MRI_dataset_{task}_3classes.csv'
+        manifest = f'MRI_dataset_{task}.csv'
 
         data = MRIDataModule(
             dataset_path=db_path,
@@ -87,17 +90,35 @@ def main():
             normalization='max',
             num_workers=None)
 
+        data.setup('fit')
+        split_file = data.save_patient_splits()
+
         trainer.fit(model, data)
-        val_acc = trainer.callback_metrics['val/acc'].item()
+        val_acc = trainer.callback_metrics['val/acc_macro'].item()
         return val_acc
 
-    study = optuna.create_study(direction="maximize")
+
+    study = optuna.create_study(
+            direction="maximize",
+            storage=db_path,
+            study_name=f"mri_classification_study_{now}",
+            load_if_exists=False
+        )
+
     study.optimize(objective, n_trials=n_trials)
 
-    print("Best hyperparameters:", study.best_params)
-
-    best_hp = pd.DataFrame([{'lr': study.best_params['lr'], 'weight_decay': study.best_params['weight_decay']}])
+    best_hp = pd.DataFrame([{
+            'lr': study.best_params['lr'],
+            'weight_decay': study.best_params['weight_decay'],
+            'dropout_rate': study.best_params['dropout_rate']
+        }])
     best_hp.to_csv(os.path.join(logdir, 'best_hp.csv'))
+
+    print("Optimisation terminée")
+    print(f"Base de données créée : {db_name}")
+    print("Best hyperparameters:", study.best_params)
 
 if __name__ == '__main__':
     main()
+
+
